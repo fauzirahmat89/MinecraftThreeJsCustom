@@ -17,6 +17,7 @@ import { BlockBreaker } from "./gameplay/BlockBreaker";
 import { HandRenderer } from "./gameplay/HandRenderer";
 import { Hud } from "./gameplay/Hud";
 import { Particles } from "./gameplay/Particles";
+import { TouchControls } from "./gameplay/TouchControls";
 import { createUI } from "./GUI";
 import {
   loadRenderDistance,
@@ -67,6 +68,10 @@ export default class Game {
   private adaptive!: AdaptiveRenderDistance;
   private music = new MusicManager();
   private clouds!: Clouds;
+  private touch!: TouchControls;
+  /** Touch controls active (auto-detected, or forced via the pause menu) */
+  private touchEnabled = false;
+  private paused = false;
   /** Deferred right-click repeat, like vanilla's 4-tick place delay */
   private placeCooldown = 0;
   private placing = false;
@@ -128,9 +133,53 @@ export default class Game {
 
     this.initStats();
     this.initListeners();
+    this.initTouchControls();
     this.initPauseMenu();
     this.updateSeedLabel();
     this.draw();
+  }
+
+  /** True while the player is actually in control of the world */
+  private isPlaying() {
+    if (!this.world.initialLoadComplete) return false;
+    return this.player.controls.isLocked || (this.touchEnabled && !this.paused);
+  }
+
+  /**
+   * Builds the on-screen controls. They start enabled on coarse-pointer
+   * devices or when the player has forced them on in the pause menu.
+   */
+  private initTouchControls() {
+    const stored = localStorage.getItem("touchControls");
+    const auto =
+      window.matchMedia("(pointer: coarse)").matches ||
+      navigator.maxTouchPoints > 0;
+    this.touchEnabled = stored === null ? auto : stored === "true";
+    this.touch = new TouchControls(this.player, {
+      onBreakStart: () => this.startBreaking(),
+      onBreakStop: () => this.stopBreaking(),
+      onPlaceStart: () => this.startPlacing(),
+      onPlaceStop: () => this.stopPlacing(),
+      onPause: () => this.togglePause(),
+      onFullscreen: () => this.toggleFullscreen(),
+    });
+    this.updateTouchVisibility();
+  }
+
+  private updateTouchVisibility() {
+    this.touch?.setVisible(
+      this.touchEnabled && this.world.initialLoadComplete && !this.paused
+    );
+  }
+
+  private setTouchEnabled(enabled: boolean) {
+    this.touchEnabled = enabled;
+    localStorage.setItem("touchControls", String(enabled));
+    const toggle = document.getElementById("touch-toggle");
+    if (toggle) {
+      toggle.textContent = `Touch Controls: ${enabled ? "On" : "Off"}`;
+    }
+    this.updateTouchVisibility();
   }
 
   private static newMeta(): WorldMeta {
@@ -218,6 +267,18 @@ export default class Game {
       }
     });
     click("github", () => window.open("https://github.com/0kzh/minicraft"));
+    click("fullscreen-toggle", () => this.toggleFullscreen());
+    document.addEventListener("fullscreenchange", () =>
+      this.updateFullscreenLabel()
+    );
+    this.updateFullscreenLabel();
+    click("touch-toggle", () => this.setTouchEnabled(!this.touchEnabled));
+    const touchToggle = document.getElementById("touch-toggle");
+    if (touchToggle) {
+      touchToggle.textContent = `Touch Controls: ${
+        this.touchEnabled ? "On" : "Off"
+      }`;
+    }
 
     const slider = document.getElementById("render-distance-slider");
     if (slider instanceof HTMLInputElement) {
@@ -271,8 +332,13 @@ export default class Game {
   }
 
   private lockControls() {
-    if (!this.world.initialLoadComplete || this.player.controls.isLocked)
+    if (!this.world.initialLoadComplete) return;
+    // Touch mode has no pointer lock: resuming simply closes the menu
+    if (this.touchEnabled) {
+      this.setPauseVisible(false);
       return;
+    }
+    if (this.player.controls.isLocked) return;
     window.clearTimeout(this.lockRetry);
     this.wantLock = true;
     this.lockRetried = false;
@@ -296,8 +362,30 @@ export default class Game {
     );
   }
 
-  /** Esc toggles between the pause menu and the game */
+  /** Enters/exits fullscreen; unavailable on iOS Safari, so failures are ignored */
+  private toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    } else {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
+  }
+
+  private updateFullscreenLabel() {
+    const pauseBtn = document.getElementById("fullscreen-toggle");
+    if (pauseBtn) {
+      pauseBtn.textContent = `Fullscreen: ${
+        document.fullscreenElement ? "On" : "Off"
+      }`;
+    }
+  }
+
+  /** Esc (or the on-screen pause button) toggles the pause menu */
   private togglePause() {
+    if (this.touchEnabled) {
+      this.setPauseVisible(!this.paused);
+      return;
+    }
     if (this.player.controls.isLocked) {
       this.player.controls.unlock();
     } else {
@@ -306,9 +394,11 @@ export default class Game {
   }
 
   private setPauseVisible(visible: boolean) {
+    this.paused = visible;
     const pause = document.getElementById("pause");
     if (pause) pause.style.display = visible ? "flex" : "none";
     this.music.setMuted(visible);
+    this.updateTouchVisibility();
   }
 
   private updateSeedLabel() {
@@ -433,20 +523,40 @@ export default class Game {
   // ------------------------------------------------------------ interaction
 
   onMouseDown(event: MouseEvent) {
-    if (!this.player.controls.isLocked) return;
+    // Touch mode drives interaction from the on-screen buttons
+    if (this.touchEnabled || !this.isPlaying()) return;
     if (event.button === 0) {
-      // Minecraft.startAttack swings even when nothing is hit
-      this.player.swing();
-      this.breaker.start();
+      this.startBreaking();
     } else if (event.button === 2) {
-      this.placing = true;
-      this.placeCooldown = 0;
+      this.startPlacing();
     }
   }
 
   onMouseUp(event: MouseEvent) {
-    if (event.button === 0) this.breaker.stop();
-    if (event.button === 2) this.placing = false;
+    if (this.touchEnabled) return;
+    if (event.button === 0) this.stopBreaking();
+    if (event.button === 2) this.stopPlacing();
+  }
+
+  /** Begins (or holds) breaking; Minecraft.startAttack swings even when nothing is hit */
+  private startBreaking() {
+    if (!this.isPlaying()) return;
+    this.player.swing();
+    this.breaker.start();
+  }
+
+  private stopBreaking() {
+    this.breaker.stop();
+  }
+
+  private startPlacing() {
+    if (!this.isPlaying()) return;
+    this.placing = true;
+    this.placeCooldown = 0;
+  }
+
+  private stopPlacing() {
+    this.placing = false;
   }
 
   private tryPlace() {
@@ -465,7 +575,7 @@ export default class Game {
   }
 
   private updateInteraction(dt: number) {
-    if (!this.player.controls.isLocked) return;
+    if (!this.isPlaying()) return;
     this.breaker.update(dt, this.player, this.world);
     if (this.placing) {
       this.placeCooldown -= dt;
@@ -547,8 +657,9 @@ export default class Game {
     this.music.update(deltaTime);
     this.adaptive.update(
       deltaTime,
-      this.world.initialLoadComplete && this.player.controls.isLocked
+      this.world.initialLoadComplete && this.isPlaying()
     );
+    this.player.inputEnabled = this.isPlaying();
 
     if (this.world.initialLoadComplete) {
       this.physics.update(deltaTime, this.player, this.world);

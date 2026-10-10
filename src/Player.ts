@@ -105,6 +105,9 @@ export class Player {
   /** Vanilla `LivingEntity.getCurrentSwingDuration` without haste/fatigue */
   static SWING_DURATION = 6;
 
+  /** Whether keyboard / wheel input is accepted (pointer lock or touch mode) */
+  inputEnabled = false;
+
   /** Held movement keys */
   #forward = false;
   #back = false;
@@ -116,6 +119,10 @@ export class Player {
   #lastForwardPress = 0;
   #forwardPressCount = 0;
   #lastJumpPress = 0;
+
+  /** On-screen D-pad vector (x right, y forward), each -1..1 */
+  #touchMove = new THREE.Vector2();
+  #touchActive = false;
 
   #walkDistance = 0;
   #nextStep = STEP_DISTANCE;
@@ -272,7 +279,9 @@ export class Player {
     this.isSneaking = this.#sneak && !this.inFluid && !this.flying;
     if (this.isSneaking && !wasSneaking) this.isSprinting = false;
 
-    const forward = this.#forward && !this.#back;
+    const forward = this.#touchActive
+      ? this.#touchMove.y > 0
+      : this.#forward && !this.#back;
     const canSprint =
       forward && !this.isSneaking && (!this.inFluid || this.flying);
     if (canSprint && this.#sprintKey) this.isSprinting = true;
@@ -286,10 +295,14 @@ export class Player {
 
   /** Strafe (x, right positive) and forward (y) input, each -1..1 */
   moveInput(): THREE.Vector2 {
-    this.#moveInput.set(
-      (this.#right ? 1 : 0) - (this.#left ? 1 : 0),
-      (this.#forward ? 1 : 0) - (this.#back ? 1 : 0)
-    );
+    if (this.#touchActive) {
+      this.#moveInput.copy(this.#touchMove);
+    } else {
+      this.#moveInput.set(
+        (this.#right ? 1 : 0) - (this.#left ? 1 : 0),
+        (this.#forward ? 1 : 0) - (this.#back ? 1 : 0)
+      );
+    }
     if (this.#moveInput.lengthSq() > 1) this.#moveInput.normalize();
     this.#moveInput.multiplyScalar(
       this.isSneaking ? INPUT_IMPULSE * Physics.SNEAK_MULTIPLIER : INPUT_IMPULSE
@@ -454,7 +467,7 @@ export class Player {
   }
 
   private onWheel(event: WheelEvent) {
-    if (!this.controls.isLocked || event.deltaY === 0) return;
+    if (!this.inputEnabled || event.deltaY === 0) return;
     this.selectSlot(this.hotbar.selected + Math.sign(event.deltaY));
   }
 
@@ -466,10 +479,61 @@ export class Player {
     this.#jump = false;
     this.#sneak = false;
     this.#sprintKey = false;
+    this.#touchActive = false;
+    this.#touchMove.set(0, 0);
+  }
+
+  // ------------------------------------------------------------ touch input
+
+  /**
+   * Sets the analog movement vector from the on-screen D-pad. Values run
+   * -1..1 with x to the right and y forward; the vector is normalised by
+   * `moveInput` exactly like the keyboard path.
+   */
+  setTouchMove(x: number, y: number) {
+    this.#touchMove.set(x, y);
+    this.#touchActive = true;
+  }
+
+  /** Stops using the on-screen movement vector (falls back to keyboard) */
+  clearTouchMove() {
+    this.#touchActive = false;
+    this.#touchMove.set(0, 0);
+  }
+
+  /** Rotates the camera by a drag delta in screen pixels (touch look) */
+  addLook(dx: number, dy: number, sensitivity = 0.0025) {
+    const { yaw, pitch } = this.getLook();
+    const limit = Math.PI / 2 - 1e-3;
+    this.setLook(
+      yaw - dx * sensitivity,
+      Math.max(-limit, Math.min(limit, pitch - dy * sensitivity))
+    );
+  }
+
+  /** On-screen jump button (held); flying ascends */
+  setJump(down: boolean) {
+    this.#jump = down;
+  }
+
+  /** On-screen sneak button (held); flying descends */
+  setSneak(down: boolean) {
+    this.#sneak = down;
+  }
+
+  /** On-screen sprint toggle, equivalent to holding Control */
+  setSprint(on: boolean) {
+    this.#sprintKey = on;
+  }
+
+  /** Toggles creative flight, like double-tapping Space on desktop */
+  toggleFlying() {
+    this.flying = !this.flying;
+    if (this.flying) this.velocity.y = 0;
   }
 
   onKeyDown(event: KeyboardEvent) {
-    if (event.repeat || !this.controls.isLocked) return;
+    if (event.repeat || !this.inputEnabled) return;
 
     switch (event.code) {
       case "Digit1":

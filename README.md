@@ -49,6 +49,19 @@ https://github.com/0kzh/minicraft/assets/9621004/1b5432d7-dc20-4147-b8db-5fa180d
 - `Esc` to pause (resume, or start a new world with a random seed)
 - `F3` to toggle the debug overlay and world-tuning controls
 
+### Touch controls
+On touch devices the on-screen controls appear automatically:
+- `D-pad` (bottom left) to move; hold two directions for diagonals
+- Drag anywhere else on the screen to look around
+- `Jump`, `Sneak`, `Sprint` (toggle), `Fly` (toggle), `Break` (hold) and
+  `Place` buttons (bottom right)
+- Tap a hotbar slot to select a block
+- `II` (top right) opens the pause menu
+- `⛶` (top right) toggles fullscreen (also available in the pause menu)
+
+Touch controls can be forced on or off from the pause menu, which is useful
+for testing on a desktop.
+
 The world (seed, edits, player position) is saved in the browser's IndexedDB
 and restored on the next visit. Textures are Mojang's Bedrock samples
 (`public/textures/MOJANG_LICENSE.md`).

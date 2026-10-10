@@ -124,7 +124,43 @@ export class Physics {
     }
 
     player.tickSprint();
+    this.tryAutoJump(player, world, move);
     player.tickStepSounds(this.blockUnderneath(player, world));
+  }
+
+  /**
+   * Vanilla-style auto-jump: while moving into a block that is exactly one
+   * block high (with room above), jump it automatically. Taller steps are left
+   * alone because the raised probe would still collide.
+   */
+  private tryAutoJump(player: Player, world: World, move: THREE.Vector2) {
+    if (
+      !player.onGround ||
+      player.flying ||
+      player.inFluid ||
+      player.isSneaking ||
+      player.jumpCooldown > 0 ||
+      move.lengthSq() < 1e-4
+    ) {
+      return;
+    }
+
+    const yaw = player.yaw;
+    const sin = Math.sin(yaw);
+    const cos = Math.cos(yaw);
+    let dx = move.x * cos - move.y * sin;
+    let dz = -move.x * sin - move.y * cos;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-4) return;
+    dx /= len;
+    dz /= len;
+
+    const box = player.getBox();
+    const probe = 0.35;
+    if (this.isFree(world, offsetBox(box, dx * probe, 0, dz * probe))) return;
+    if (this.isFree(world, offsetBox(box, dx * probe, 1, dz * probe))) {
+      this.jump(player);
+    }
   }
 
   /** Vanilla `LivingEntity.jumpFromGround` */
