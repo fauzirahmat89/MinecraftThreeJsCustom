@@ -68,6 +68,11 @@ export enum RenderGeometry {
    * a stand, a keyboard and a tower. Meant to sit on top of a table.
    */
   Computer,
+  /**
+   * Chair prop (multi-box model): a seat, four legs and a backrest. The player
+   * can sit on it, facing the direction the chair faces.
+   */
+  Chair,
 }
 
 /** Block-space AABB: minX, minY, minZ, maxX, maxY, maxZ */
@@ -81,6 +86,10 @@ export const SNOW_LAYER_HEIGHT = 2 / 16;
 export const TABLE_TOP_Y = 13 / 16;
 export const TABLE_INSET = 2 / 16;
 export const TABLE_LEG = 3 / 16;
+
+/** Chair model metrics (in block units) */
+export const CHAIR_SEAT_Y = 8 / 16;
+export const CHAIR_INSET = 1 / 16;
 
 /** Which horizontal neighbours are the same table block */
 export type TableConnections = {
@@ -132,6 +141,14 @@ export type ModelBox = {
 
 /** Horizontal direction a directional model faces */
 export type Facing = "south" | "north" | "east" | "west";
+
+/** Yaw (about Y) that points a model's authored +Z front towards `facing` */
+export const FACING_YAW: Record<Facing, number> = {
+  south: 0,
+  east: Math.PI / 2,
+  north: Math.PI,
+  west: -Math.PI / 2,
+};
 
 /** Face order used everywhere: +X, -X, +Y, -Y, +Z, -Z */
 const FRONT_FACE: Record<Facing, number> = {
@@ -224,6 +241,66 @@ export function computerBlockId(facing: Facing): BlockID {
       return BlockID.ComputerWest;
     default:
       return BlockID.Computer;
+  }
+}
+
+/**
+ * Chair model. Authored facing +Z (the sitter looks +Z, the backrest is on the
+ * -Z side); `facing` rotates the whole model. The back posts double as the
+ * backrest frame and the panel spans between them.
+ */
+export function chairParts(facing: Facing = "south"): ModelBox[] {
+  const w = textureLayer("oak_planks");
+  const parts: BlockBox[] = [
+    // seat
+    [1 / 16, 6 / 16, 1 / 16, 15 / 16, 8 / 16, 14 / 16],
+    // front legs
+    [1 / 16, 0, 12 / 16, 3 / 16, 6 / 16, 14 / 16],
+    [13 / 16, 0, 12 / 16, 15 / 16, 6 / 16, 14 / 16],
+    // back posts (legs rising into the backrest)
+    [1 / 16, 0, 1 / 16, 3 / 16, 15 / 16, 3 / 16],
+    [13 / 16, 0, 1 / 16, 15 / 16, 15 / 16, 3 / 16],
+    // backrest panel
+    [1 / 16, 11 / 16, 1 / 16, 15 / 16, 14 / 16, 3 / 16],
+  ];
+  const model = parts.map((box) => ({
+    box,
+    faces: [w, w, w, w, w, w] as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number
+    ],
+  }));
+  if (facing === "south") return model;
+  return model.map((p) => ({ ...p, box: rotateBox(p.box, facing) }));
+}
+
+/** Block id for a chair facing `facing` (the default south variant reuses Chair) */
+export function chairBlockId(facing: Facing): BlockID {
+  switch (facing) {
+    case "north":
+      return BlockID.ChairNorth;
+    case "east":
+      return BlockID.ChairEast;
+    case "west":
+      return BlockID.ChairWest;
+    default:
+      return BlockID.Chair;
+  }
+}
+
+/** Render boxes of any multi-box prop model (computer, chair) */
+export function modelParts(def: BlockDef): ModelBox[] {
+  switch (def.geometry) {
+    case RenderGeometry.Computer:
+      return computerParts(def.facing ?? "south");
+    case RenderGeometry.Chair:
+      return chairParts(def.facing ?? "south");
+    default:
+      return [{ box: def.box, faces: def.faces }];
   }
 }
 
@@ -381,6 +458,25 @@ const computer = (id: BlockID, facing: Facing): BlockDef =>
     replaceable: false,
     box: [3 / 16, 0, 3 / 16, 15 / 16, 9 / 16, 15 / 16],
     lightEmission: 7,
+    lightOpacity: 1,
+    cullSelf: true,
+    facing,
+    paletteHidden: facing !== "south",
+  });
+
+/**
+ * Wooden chair: a multi-box prop the player can sit on. `facing` is the
+ * direction the sitter looks (the backrest is behind them); only the default
+ * south variant shows in the block picker.
+ */
+const chair = (id: BlockID, facing: Facing): BlockDef =>
+  cube(id, "chair", "oak_planks", "", "wood", {
+    geometry: RenderGeometry.Chair,
+    layer: RenderLayer.Cutout,
+    opaque: false,
+    passable: false,
+    replaceable: false,
+    box: [1 / 16, 0, 1 / 16, 15 / 16, 15 / 16, 15 / 16],
     lightOpacity: 1,
     cullSelf: true,
     facing,
@@ -589,6 +685,10 @@ const defs: BlockDef[] = [
   computer(BlockID.ComputerNorth, "north"),
   computer(BlockID.ComputerEast, "east"),
   computer(BlockID.ComputerWest, "west"),
+  chair(BlockID.Chair, "south"),
+  chair(BlockID.ChairNorth, "north"),
+  chair(BlockID.ChairEast, "east"),
+  chair(BlockID.ChairWest, "west"),
 ];
 
 export const BLOCKS: BlockDef[] = [];

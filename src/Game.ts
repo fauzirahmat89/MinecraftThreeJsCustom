@@ -5,7 +5,14 @@ import { AdaptiveRenderDistance } from "./AdaptiveRenderDistance";
 import audioManager from "./audio/AudioManager";
 import { MusicManager } from "./audio/MusicManager";
 import { BlockID } from "./Block";
-import { computerBlockId, Facing, getBlockDef } from "./Block/blocks";
+import {
+  CHAIR_SEAT_Y,
+  chairBlockId,
+  computerBlockId,
+  Facing,
+  getBlockDef,
+  RenderGeometry,
+} from "./Block/blocks";
 import {
   BlockTextures,
   buildBlockIcons,
@@ -18,6 +25,7 @@ import { HandRenderer } from "./gameplay/HandRenderer";
 import { Hud } from "./gameplay/Hud";
 import { CREATIVE_BLOCKS } from "./gameplay/palette";
 import { Particles } from "./gameplay/Particles";
+import { PlayerModel } from "./gameplay/PlayerModel";
 import { TouchControls } from "./gameplay/TouchControls";
 import { createUI } from "./GUI";
 import {
@@ -64,6 +72,7 @@ export default class Game {
   private physics!: Physics;
   private breaker!: BlockBreaker;
   private hand!: HandRenderer;
+  private playerModel!: PlayerModel;
   private particles!: Particles;
   private hud = new Hud();
   private adaptive!: AdaptiveRenderDistance;
@@ -165,6 +174,8 @@ export default class Game {
       onBreakStop: () => this.stopBreaking(),
       onPlaceStart: () => this.startPlacing(),
       onPlaceStop: () => this.stopPlacing(),
+      onUse: () => this.onUse(),
+      onViewToggle: () => this.player.toggleThirdPerson(),
       onPause: () => this.togglePause(),
       onFullscreen: () => this.toggleFullscreen(),
     });
@@ -496,7 +507,7 @@ export default class Game {
     if (!this.world.initialLoadComplete) return;
     const dirty = this.world.dataStore.takeDirty();
     const look = this.player.getLook();
-    const p = this.player.position;
+    const p = this.player.saveEye;
     this.meta.player = {
       x: p.x,
       y: p.y,
@@ -542,6 +553,8 @@ export default class Game {
     this.player.onHotbarChange = () => this.refreshHotbar();
     this.physics = new Physics(this.scene);
     this.hand = new HandRenderer(textures);
+    this.playerModel = new PlayerModel();
+    this.scene.add(this.playerModel.group);
 
     this.particles = new Particles(textures, this.world);
     this.scene.add(this.particles.mesh);
@@ -566,6 +579,10 @@ export default class Game {
         e.preventDefault();
         if (this.inventoryOpen) this.closeInventory();
         else if (this.isPlaying()) this.openInventory();
+      } else if (e.code === "KeyF") {
+        if (this.isPlaying()) this.onUse();
+      } else if (e.code === "KeyV") {
+        if (this.isPlaying()) this.player.toggleThirdPerson();
       } else if (e.code === "Escape") {
         // Browsers release pointer lock on Esc themselves (firing `unlock`);
         // when the menu is already up, Esc goes back into the game
@@ -629,9 +646,13 @@ export default class Game {
     const target = this.player.blockPlacementCoords;
     let id = this.player.activeBlockId;
     if (!target || id === null) return;
-    // The computer faces the player who places it
-    if (id === BlockID.Computer) {
-      id = computerBlockId(this.facingFromPlayer(target.x, target.z));
+    // Directional props face the player who places them
+    if (id === BlockID.Computer || id === BlockID.Chair) {
+      const facing = this.facingFromPlayer(target.x, target.z);
+      id =
+        id === BlockID.Computer
+          ? computerBlockId(facing)
+          : chairBlockId(facing);
     }
     const def = getBlockDef(id);
     if (
@@ -646,14 +667,41 @@ export default class Game {
 
   /** Horizontal direction from a block cell towards the player (screen faces it) */
   private facingFromPlayer(x: number, z: number): Facing {
-    const dx = this.player.position.x - (x + 0.5);
-    const dz = this.player.position.z - (z + 0.5);
+    const dx = this.player.pos.x - (x + 0.5);
+    const dz = this.player.pos.z - (z + 0.5);
     if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? "east" : "west";
     return dz >= 0 ? "south" : "north";
   }
 
+  /** Sits on the targeted chair, or stands up if already sitting */
+  private onUse() {
+    if (this.player.isSitting) {
+      this.player.standUp();
+      return;
+    }
+    const coords = this.player.selectedCoords;
+    if (!coords) return;
+    const id = this.world.getBlock(coords.x, coords.y, coords.z);
+    const def = id === undefined ? undefined : getBlockDef(id);
+    if (!def || def.geometry !== RenderGeometry.Chair) return;
+    this.player.sit(coords.x, coords.y, coords.z, def.facing ?? "south");
+  }
+
+  /** Stands the player up if the chair they sat on is gone */
+  private checkSeat() {
+    if (!this.player.isSitting) return;
+    const seat = this.player.seatAnchor;
+    const id = this.world.getBlock(
+      Math.floor(seat.x),
+      Math.floor(seat.y - CHAIR_SEAT_Y),
+      Math.floor(seat.z)
+    );
+    const def = id === undefined ? undefined : getBlockDef(id);
+    if (!def || def.geometry !== RenderGeometry.Chair) this.player.standUp();
+  }
+
   private updateInteraction(dt: number) {
-    if (!this.isPlaying()) return;
+    if (!this.isPlaying() || this.player.isSitting) return;
     this.breaker.update(dt, this.player, this.world);
     if (this.placing) {
       this.placeCooldown -= dt;
@@ -743,6 +791,13 @@ export default class Game {
       this.physics.update(deltaTime, this.player, this.world);
       this.updateInteraction(deltaTime);
       this.hand.update(deltaTime, this.player);
+      this.playerModel.setVisible(this.player.isThirdPersonView);
+      this.playerModel.update(
+        deltaTime,
+        this.player,
+        this.physics.accumulator / Physics.TICK
+      );
+      this.checkSeat();
       this.particles.update(deltaTime);
     }
     this.world.update(this.player);
@@ -780,7 +835,7 @@ export default class Game {
   private renderWorldAndHand() {
     this.renderer.clear();
     this.renderer.render(this.scene, this.player.camera);
-    if (this.world.initialLoadComplete) {
+    if (this.world.initialLoadComplete && !this.player.isThirdPersonView) {
       this.hand.render(
         this.renderer,
         this.player,

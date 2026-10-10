@@ -98,6 +98,13 @@ export class Physics {
   private tick(player: Player, world: World) {
     player.beginTick();
     player.tickSwing();
+
+    // Sitting freezes the player on the seat; any move/jump/sneak input stands
+    if (player.isSitting) {
+      if (player.wantsToStand()) player.standUp();
+      return;
+    }
+
     this.sampleFluid(player, world, player.getBox());
     player.tickInput();
 

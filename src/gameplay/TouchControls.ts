@@ -6,6 +6,10 @@ export interface TouchControlHandlers {
   onBreakStop(): void;
   onPlaceStart(): void;
   onPlaceStop(): void;
+  /** Quick tap on the world: sit on a targeted chair / stand up */
+  onUse(): void;
+  /** Toggle first/third person */
+  onViewToggle(): void;
   onPause(): void;
   onFullscreen(): void;
 }
@@ -27,6 +31,11 @@ export class TouchControls {
   private lookPointer: number | null = null;
   private lookX = 0;
   private lookY = 0;
+  /** Start position/time of the current look pointer, for tap detection */
+  private lookStartX = 0;
+  private lookStartY = 0;
+  private lookStartTime = 0;
+  private lookMoved = false;
   /**
    * Pointers that began on an action button, keyed to their start position.
    * They only take over the look once dragged past a small threshold, so a
@@ -164,6 +173,8 @@ export class TouchControls {
 
   /** Pixels a button-originated drag must move before it starts looking */
   private static readonly LOOK_DRAG_THRESHOLD = 8;
+  /** Longest a touch may last and still count as a tap (ms) */
+  private static readonly TAP_MAX_MS = 250;
 
   /**
    * Look gestures are handled on the controls container so pointer events from
@@ -187,10 +198,20 @@ export class TouchControls {
       this.lookPointer = e.pointerId;
       this.lookX = e.clientX;
       this.lookY = e.clientY;
+      this.lookStartX = e.clientX;
+      this.lookStartY = e.clientY;
+      this.lookStartTime = performance.now();
+      this.lookMoved = false;
       this.root.setPointerCapture?.(e.pointerId);
     });
     this.root.addEventListener("pointermove", (e: PointerEvent) => {
       if (e.pointerId === this.lookPointer) {
+        if (
+          Math.hypot(e.clientX - this.lookStartX, e.clientY - this.lookStartY) >
+          TouchControls.LOOK_DRAG_THRESHOLD
+        ) {
+          this.lookMoved = true;
+        }
         this.player.addLook(e.clientX - this.lookX, e.clientY - this.lookY);
         this.lookX = e.clientX;
         this.lookY = e.clientY;
@@ -208,8 +229,13 @@ export class TouchControls {
     const end = (e: PointerEvent) => {
       this.lookCandidates.delete(e.pointerId);
       if (e.pointerId !== this.lookPointer) return;
+      const tap =
+        e.type === "pointerup" &&
+        !this.lookMoved &&
+        performance.now() - this.lookStartTime < TouchControls.TAP_MAX_MS;
       this.lookPointer = null;
       this.root.releasePointerCapture?.(e.pointerId);
+      if (tap) this.handlers.onUse();
     };
     this.root.addEventListener("pointerup", end);
     this.root.addEventListener("pointercancel", end);
@@ -268,6 +294,7 @@ export class TouchControls {
       this.setActive("touch-sprint", this.sprinting);
     });
     this.tap("touch-fly", () => this.player.toggleFlying());
+    this.tap("touch-view", () => this.handlers.onViewToggle());
     this.tap("touch-pause", () => this.handlers.onPause());
     this.tap("touch-fullscreen", () => this.handlers.onFullscreen());
   }

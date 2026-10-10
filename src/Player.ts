@@ -6,7 +6,7 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 
 import audioManager from "./audio/AudioManager";
 import { BlockID } from "./Block";
-import { getBlockDef } from "./Block/blocks";
+import { CHAIR_SEAT_Y, FACING_YAW, Facing, getBlockDef } from "./Block/blocks";
 import { raycastVoxels } from "./chunk/raycast";
 import { Inventory } from "./gameplay/Inventory";
 import { CREATIVE_PALETTE } from "./gameplay/palette";
@@ -75,6 +75,11 @@ const STEP_DISTANCE = 1 / 0.6;
 /** Double-tapping jump within this window toggles creative flight */
 const FLY_DOUBLE_TAP_MS = 350;
 
+/** Third-person camera distance behind the eyes */
+const THIRD_PERSON_DISTANCE = 4;
+/** Sitting camera height above the chair block base */
+const SIT_EYE_HEIGHT = 1.2;
+
 /**
  * Player state: a 0.6 x 1.8 box at `pos` (feet centre) moved by `Physics`
  * at 20 ticks/s, with the camera at eye height interpolated between ticks.
@@ -100,6 +105,17 @@ export class Player {
   isSneaking = false;
   /** Creative flight */
   flying = false;
+  /** Third-person camera preference (auto-enabled while sitting) */
+  thirdPerson = false;
+  /** Sitting on a chair: movement is locked, the camera moves to the seat */
+  #sitting = false;
+  #seatAnchor = new THREE.Vector3();
+  #seatEye = new THREE.Vector3();
+  #seatYaw = 0;
+  #preSitPos = new THREE.Vector3();
+  /** Eye position for this frame, independent of any third-person offset */
+  #eyePosition = new THREE.Vector3();
+  #saveTmp = new THREE.Vector3();
   /** Arm swing progress in ticks; -1 when idle (`LivingEntity.swingTime`) */
   swingTime = -1;
   /** Vanilla `LivingEntity.getCurrentSwingDuration` without haste/fatigue */
@@ -231,6 +247,72 @@ export class Player {
     return this.#euler.y;
   }
 
+  /** Whether the player is currently sitting on a chair */
+  get isSitting() {
+    return this.#sitting;
+  }
+
+  /** Third-person view is on when toggled or while sitting */
+  get isThirdPersonView() {
+    return this.thirdPerson || this.#sitting;
+  }
+
+  /** Eye position for this frame (no third-person offset applied) */
+  get eyePosition() {
+    return this.#eyePosition;
+  }
+
+  /** Eye position to persist: the standing spot while sitting, else the eye */
+  get saveEye() {
+    if (!this.#sitting) return this.#eyePosition;
+    return this.#saveTmp.set(
+      this.#preSitPos.x,
+      this.#preSitPos.y + EYE_HEIGHT,
+      this.#preSitPos.z
+    );
+  }
+
+  /** Model feet anchor while sitting (seat top); chairs seat the body here */
+  get seatAnchor() {
+    return this.#seatAnchor;
+  }
+
+  /** Body yaw while sitting, from the chair's facing */
+  get seatYaw() {
+    return this.#seatYaw;
+  }
+
+  /** Sits the camera on the chair at (x, y, z) facing `facing` */
+  sit(x: number, y: number, z: number, facing: Facing) {
+    if (this.#sitting) return;
+    this.#preSitPos.copy(this.pos);
+    this.#sitting = true;
+    this.#seatAnchor.set(x + 0.5, y + CHAIR_SEAT_Y, z + 0.5);
+    this.#seatEye.set(x + 0.5, y + SIT_EYE_HEIGHT, z + 0.5);
+    this.#seatYaw = FACING_YAW[facing];
+    this.velocity.set(0, 0, 0);
+    this.isSprinting = false;
+    this.isSneaking = false;
+    // Put the camera behind the sitter, looking the way the chair faces
+    this.setLook(this.#seatYaw + Math.PI, 0);
+  }
+
+  /** Stands up, returning to where the player was standing before sitting */
+  standUp() {
+    if (!this.#sitting) return;
+    this.#sitting = false;
+    this.placeFeet(this.#preSitPos.x, this.#preSitPos.y, this.#preSitPos.z);
+  }
+
+  /** Whether held movement/jump/sneak input should make the player stand */
+  wantsToStand() {
+    return this.moveInput().lengthSq() > 1e-4 || this.#jump || this.#sneak;
+  }
+
+  toggleThirdPerson() {
+    this.thirdPerson = !this.thirdPerson;
+  }
+
   get jumping() {
     return this.#jump;
   }
@@ -329,15 +411,45 @@ export class Player {
     }
   }
 
-  /** Places the camera between the last two ticks (alpha 0..1) */
+  /** Computes this frame's eye position from the last two ticks (alpha 0..1) */
   interpolate(alpha: number) {
-    this.camera.position.lerpVectors(this.prevPos, this.pos, alpha);
-    this.camera.position.y += this.#eyeHeight;
+    if (this.#sitting) {
+      this.#eyePosition.copy(this.#seatEye);
+      return;
+    }
+    this.#eyePosition.lerpVectors(this.prevPos, this.pos, alpha);
+    this.#eyePosition.y += this.#eyeHeight;
+  }
+
+  /** Places the camera at the eye, or behind the player in third person */
+  private updateCamera(world: World) {
+    if (!this.isThirdPersonView) {
+      this.camera.position.copy(this.#eyePosition);
+      return;
+    }
+    const forward = this.camera.getWorldDirection(this.#lookDirection);
+    let distance = THIRD_PERSON_DISTANCE;
+    const hit = raycastVoxels(
+      this.#eyePosition,
+      { x: -forward.x, y: -forward.y, z: -forward.z },
+      distance,
+      (x, y, z) => {
+        const id = world.getBlock(x, y, z);
+        if (id === undefined) return null;
+        const def = getBlockDef(id);
+        return def.passable ? null : def.box;
+      }
+    );
+    if (hit) distance = Math.max(hit.distance - 0.2, 0.5);
+    this.camera.position
+      .copy(this.#eyePosition)
+      .addScaledVector(forward, -distance);
   }
 
   update(dt: number, world: World) {
     this.updateEyeHeight(dt);
     this.updateCameraFOV(dt);
+    this.updateCamera(world);
     this.updateBoundsHelper();
     this.updateRaycaster(world);
     this.updateDebugPosition();

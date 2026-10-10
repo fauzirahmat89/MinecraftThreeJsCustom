@@ -3,7 +3,7 @@ import * as THREE from "three";
 import {
   BLOCKS,
   BlockDef,
-  computerParts,
+  modelParts,
   RenderGeometry,
   tableParts,
   TEXTURE_LAYERS,
@@ -241,9 +241,13 @@ export function renderBlockIcon(
     return canvas.toDataURL();
   }
 
-  // Computer: draw each model box (back to front) as an isometric box, using
-  // that part's own face textures; the screen part is drawn full-bright.
-  if (def.geometry === RenderGeometry.Computer) {
+  // Multi-box prop (computer, chair): draw each model box (back to front) as an
+  // isometric box, using that part's own face textures; emissive parts are
+  // drawn full-bright.
+  if (
+    def.geometry === RenderGeometry.Computer ||
+    def.geometry === RenderGeometry.Chair
+  ) {
     const L = ICON_SIZE / (Math.SQRT2 / 2 + Math.cos(Math.PI / 6));
     const w = L / Math.SQRT2;
     const h = w / 2;
@@ -251,7 +255,7 @@ export function renderBlockIcon(
     const cx = ICON_SIZE / 2;
     const top = (ICON_SIZE - 2 * h - side) / 2;
     const s = TEXTURE_SIZE;
-    const parts = computerParts(def.facing ?? "south");
+    const parts = modelParts(def);
     parts.sort(
       (a, b) =>
         (a.box[0] + a.box[3] + a.box[2] + a.box[5]) / 2 -

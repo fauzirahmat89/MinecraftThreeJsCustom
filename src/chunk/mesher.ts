@@ -1,9 +1,9 @@
 import {
   BlockBox,
   BlockDef,
-  computerParts,
   fluidHeight,
   getBlockDef,
+  modelParts,
   RenderGeometry,
   RenderLayer,
   tableParts,
@@ -304,7 +304,7 @@ export function meshChunk(
   meshCrosses(size, data, vol, builders);
   meshBoxes(size, data, vol, builders);
   meshTables(size, data, vol, builders);
-  meshComputers(size, data, vol, builders);
+  meshModels(size, data, vol, builders);
   meshFluids(size, data, vol, builders);
 
   return {
@@ -794,11 +794,10 @@ function meshTables(
 }
 
 /**
- * Computers: a multi-box prop (monitor + stand + keyboard + tower). Faces flush
- * with the cell boundary are culled like cube faces; the monitor screen box is
- * drawn at full brightness.
+ * Multi-box prop models (computers, chairs). Faces flush with the cell boundary
+ * are culled like cube faces; parts flagged emissive are drawn full brightness.
  */
-function meshComputers(
+function meshModels(
   size: ChunkSize,
   data: Uint8Array,
   vol: LitVolume,
@@ -810,9 +809,13 @@ function meshComputers(
     for (let z = 0; z < w; z++) {
       for (let x = 0; x < w; x++) {
         const def = getBlockDef(data[blockIndex(size, x, y, z)]);
-        if (def.geometry !== RenderGeometry.Computer) continue;
+        if (
+          def.geometry !== RenderGeometry.Computer &&
+          def.geometry !== RenderGeometry.Chair
+        )
+          continue;
         const builder = builders[def.layer];
-        for (const part of computerParts(def.facing ?? "south")) {
+        for (const part of modelParts(def)) {
           const b = part.box;
           for (let face = 0; face < 6; face++) {
             const [nx, ny, nz] = FACE_NORMALS[face];

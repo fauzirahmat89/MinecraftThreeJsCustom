@@ -38,6 +38,12 @@ export enum BlockID {
   ComputerNorth = 32,
   ComputerEast = 33,
   ComputerWest = 34,
+  /** Wooden chair the player can sit on (faces south/+Z) */
+  Chair = 35,
+  /** Chair variants facing the other horizontal directions */
+  ChairNorth = 36,
+  ChairEast = 37,
+  ChairWest = 38,
   /**
    * Flowing liquids occupy 16 ids each: FlowingWater + (level - 1) for
    * levels 1-7 (thinner as the level rises), + FLUID_FALLING for columns
@@ -101,4 +107,8 @@ export const blockIdToKey = {
   [BlockID.ComputerNorth]: "computer_north",
   [BlockID.ComputerEast]: "computer_east",
   [BlockID.ComputerWest]: "computer_west",
+  [BlockID.Chair]: "chair",
+  [BlockID.ChairNorth]: "chair_north",
+  [BlockID.ChairEast]: "chair_east",
+  [BlockID.ChairWest]: "chair_west",
 };

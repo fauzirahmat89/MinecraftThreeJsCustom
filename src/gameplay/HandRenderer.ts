@@ -2,8 +2,8 @@ import * as THREE from "three";
 
 import { BlockID } from "../Block";
 import {
-  computerParts,
   getBlockDef,
+  modelParts,
   RenderGeometry,
   tableParts,
 } from "../Block/blocks";
@@ -194,9 +194,7 @@ export class HandRenderer {
               north: false,
               south: false,
             }).map((box) => ({ box, faces: def.faces }))
-          : def.geometry === RenderGeometry.Computer
-          ? computerParts(def.facing ?? "south")
-          : [{ box: def.box, faces: def.faces }];
+          : modelParts(def);
       for (const { box, faces, emissive } of parts) {
         const [x0, y0, z0, x1, y1, z1] = box;
         const quads: [number, number, number][][] = [
