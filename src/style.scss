@@ -105,6 +105,65 @@ canvas {
       left: calc(var(--px) * (3 + 20 * #{$i - 1}));
     }
   }
+
+  /* Button beside the hotbar that opens the block picker */
+  #inventory-toggle {
+    position: absolute;
+    right: calc(var(--px) * -30);
+    bottom: calc(var(--px) * 1);
+    width: calc(var(--px) * 20);
+    height: calc(var(--px) * 20);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--px) * 13);
+    color: #fff;
+    text-shadow: 2px 2px #000a;
+    background: rgba(30, 30, 30, 0.55);
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    z-index: 21;
+  }
+
+  /* Grid of every placeable block, shown above the hotbar */
+  #inventory-panel {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    display: none;
+    width: min(92vw, 440px);
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px;
+    box-sizing: border-box;
+    max-height: 48vh;
+    overflow-y: auto;
+    background: rgba(30, 30, 30, 0.94);
+    border: 3px solid #000;
+    z-index: 30;
+
+    &.open {
+      display: grid;
+    }
+
+    .inv-slot {
+      aspect-ratio: 1;
+      background-size: 90% 90%;
+      background-repeat: no-repeat;
+      background-position: center;
+      image-rendering: pixelated;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      box-sizing: border-box;
+      cursor: pointer;
+
+      &:hover {
+        border-color: #fff;
+      }
+    }
+  }
 }
 
 #main-menu {

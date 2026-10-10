@@ -276,7 +276,6 @@ export function renderBlockIcon(
 export function buildBlockIcons(icons: Map<TextureName, ImageData>) {
   for (const def of BLOCKS) {
     if (!def || def.geometry === RenderGeometry.None) continue;
-    if (def.fluidLevel > 0 || def.fluidFalling) continue;
     def.uiTexture = renderBlockIcon(def, icons);
   }
 }

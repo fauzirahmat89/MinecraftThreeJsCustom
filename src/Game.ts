@@ -16,6 +16,7 @@ import { Clouds } from "./Clouds";
 import { BlockBreaker } from "./gameplay/BlockBreaker";
 import { HandRenderer } from "./gameplay/HandRenderer";
 import { Hud } from "./gameplay/Hud";
+import { CREATIVE_BLOCKS } from "./gameplay/palette";
 import { Particles } from "./gameplay/Particles";
 import { TouchControls } from "./gameplay/TouchControls";
 import { createUI } from "./GUI";
@@ -78,6 +79,9 @@ export default class Game {
   private wantLock = false;
   private lockRetried = false;
   private lockRetry = 0;
+  private inventoryOpen = false;
+  /** Set while opening the inventory so releasing the pointer skips the pause menu */
+  private suppressPause = false;
 
   private previousTime = 0;
   private readonly fogColor = new THREE.Color();
@@ -135,6 +139,7 @@ export default class Game {
     this.initListeners();
     this.initTouchControls();
     this.initPauseMenu();
+    this.initInventory();
     this.updateSeedLabel();
     this.draw();
   }
@@ -323,6 +328,11 @@ export default class Game {
       window.clearTimeout(this.lockRetry);
       this.breaker.stop();
       this.placing = false;
+      // Releasing the pointer to open the inventory must not raise the menu
+      if (this.suppressPause) {
+        this.suppressPause = false;
+        return;
+      }
       if (this.world.initialLoadComplete) this.setPauseVisible(true);
     });
     this.world.onInitialLoad = () => {
@@ -399,6 +409,57 @@ export default class Game {
     if (pause) pause.style.display = visible ? "flex" : "none";
     this.music.setMuted(visible);
     this.updateTouchVisibility();
+  }
+
+  /**
+   * Builds the creative block picker shown beside the hotbar. Clicking a block
+   * drops it into the currently selected hotbar slot and closes the panel.
+   */
+  private initInventory() {
+    const panel = document.getElementById("inventory-panel");
+    if (!panel) return;
+
+    for (const id of CREATIVE_BLOCKS) {
+      const def = getBlockDef(id);
+      const slot = document.createElement("div");
+      slot.className = "inv-slot";
+      slot.title = def.name;
+      slot.style.backgroundImage = def.uiTexture
+        ? `url('${def.uiTexture}')`
+        : "none";
+      slot.addEventListener("click", () => {
+        audioManager.play("ui.button.click");
+        this.player.assignHotbar(id);
+        this.closeInventory();
+      });
+      panel.appendChild(slot);
+    }
+
+    document
+      .getElementById("inventory-toggle")
+      ?.addEventListener("click", () => {
+        audioManager.play("ui.button.click");
+        if (this.inventoryOpen) this.closeInventory();
+        else this.openInventory();
+      });
+  }
+
+  private openInventory() {
+    if (this.inventoryOpen) return;
+    this.inventoryOpen = true;
+    document.getElementById("inventory-panel")?.classList.add("open");
+    // Desktop: release the pointer so the panel can be clicked
+    if (!this.touchEnabled && this.player.controls.isLocked) {
+      this.suppressPause = true;
+      this.player.controls.unlock();
+    }
+  }
+
+  private closeInventory() {
+    if (!this.inventoryOpen) return;
+    this.inventoryOpen = false;
+    document.getElementById("inventory-panel")?.classList.remove("open");
+    if (!this.touchEnabled) this.lockControls();
   }
 
   private updateSeedLabel() {
@@ -501,10 +562,15 @@ export default class Game {
       if (e.code === "F3") {
         e.preventDefault();
         this.toggleDebug();
+      } else if (e.code === "KeyE") {
+        e.preventDefault();
+        if (this.inventoryOpen) this.closeInventory();
+        else if (this.isPlaying()) this.openInventory();
       } else if (e.code === "Escape") {
         // Browsers release pointer lock on Esc themselves (firing `unlock`);
         // when the menu is already up, Esc goes back into the game
-        if (!this.player.controls.isLocked) this.togglePause();
+        if (this.inventoryOpen) this.closeInventory();
+        else if (!this.player.controls.isLocked) this.togglePause();
       }
     });
     // Save before the tab goes away; IndexedDB writes started here complete

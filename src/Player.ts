@@ -466,6 +466,12 @@ export class Player {
     this.onHotbarChange();
   }
 
+  /** Puts a block from the creative inventory into the selected hotbar slot */
+  assignHotbar(id: BlockID) {
+    this.hotbar.slots[this.hotbar.selected] = id;
+    this.onHotbarChange();
+  }
+
   private onWheel(event: WheelEvent) {
     if (!this.inputEnabled || event.deltaY === 0) return;
     this.selectSlot(this.hotbar.selected + Math.sign(event.deltaY));
