@@ -22,5 +22,6 @@ export const CREATIVE_BLOCKS: BlockID[] = BLOCKS.filter(
   (def) =>
     def !== undefined &&
     def.geometry !== RenderGeometry.None &&
-    def.id !== BlockID.Air
+    def.id !== BlockID.Air &&
+    !def.paletteHidden
 ).map((def) => def.id);

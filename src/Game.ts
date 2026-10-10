@@ -5,7 +5,7 @@ import { AdaptiveRenderDistance } from "./AdaptiveRenderDistance";
 import audioManager from "./audio/AudioManager";
 import { MusicManager } from "./audio/MusicManager";
 import { BlockID } from "./Block";
-import { getBlockDef } from "./Block/blocks";
+import { computerBlockId, Facing, getBlockDef } from "./Block/blocks";
 import {
   BlockTextures,
   buildBlockIcons,
@@ -627,8 +627,12 @@ export default class Game {
 
   private tryPlace() {
     const target = this.player.blockPlacementCoords;
-    const id = this.player.activeBlockId;
+    let id = this.player.activeBlockId;
     if (!target || id === null) return;
+    // The computer faces the player who places it
+    if (id === BlockID.Computer) {
+      id = computerBlockId(this.facingFromPlayer(target.x, target.z));
+    }
     const def = getBlockDef(id);
     if (
       !def.passable &&
@@ -638,6 +642,14 @@ export default class Game {
     if (this.world.addBlock(target.x, target.y, target.z, id)) {
       this.player.swing();
     }
+  }
+
+  /** Horizontal direction from a block cell towards the player (screen faces it) */
+  private facingFromPlayer(x: number, z: number): Facing {
+    const dx = this.player.position.x - (x + 0.5);
+    const dz = this.player.position.z - (z + 0.5);
+    if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? "east" : "west";
+    return dz >= 0 ? "south" : "north";
   }
 
   private updateInteraction(dt: number) {

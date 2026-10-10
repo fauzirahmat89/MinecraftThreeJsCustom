@@ -40,6 +40,9 @@ export const TEXTURE_LAYERS = [
   "gold_ore",
   "diamond_ore",
   "oak_planks",
+  "computer_case",
+  "computer_screen",
+  "computer_keyboard",
 ] as const;
 
 export type TextureName = typeof TEXTURE_LAYERS[number];
@@ -60,6 +63,11 @@ export enum RenderGeometry {
    * neighbouring blocks of the same type (fence-style connection).
    */
   Table,
+  /**
+   * Desktop computer prop (multi-box model): a monitor with a glowing screen,
+   * a stand, a keyboard and a tower. Meant to sit on top of a table.
+   */
+  Computer,
 }
 
 /** Block-space AABB: minX, minY, minZ, maxX, maxY, maxZ */
@@ -113,6 +121,112 @@ export function tableParts(c: TableConnections): BlockBox[] {
   return parts;
 }
 
+/** A single axis-aligned box of a multi-box model, with its own face layers */
+export type ModelBox = {
+  box: BlockBox;
+  /** Face texture layer: +X, -X, +Y, -Y, +Z, -Z */
+  faces: [number, number, number, number, number, number];
+  /** Rendered at full brightness (the monitor's glowing screen) */
+  emissive?: boolean;
+};
+
+/** Horizontal direction a directional model faces */
+export type Facing = "south" | "north" | "east" | "west";
+
+/** Face order used everywhere: +X, -X, +Y, -Y, +Z, -Z */
+const FRONT_FACE: Record<Facing, number> = {
+  south: 4,
+  north: 5,
+  east: 0,
+  west: 1,
+};
+
+/** Rotates a box 90 degrees about Y so the model's +Z front points `facing` */
+function rotateBox(b: BlockBox, facing: Facing): BlockBox {
+  const [x0, y0, z0, x1, y1, z1] = b;
+  switch (facing) {
+    case "north":
+      return [1 - x1, y0, 1 - z1, 1 - x0, y1, 1 - z0];
+    case "east":
+      return [z0, y0, 1 - x1, z1, y1, 1 - x0];
+    case "west":
+      return [1 - z1, y0, x0, 1 - z0, y1, x1];
+    default:
+      return b;
+  }
+}
+
+/**
+ * Desktop computer model, occupying the lower part of its cell so it reads as
+ * standing on a tabletop when placed in the cell above a table. Authored with
+ * the screen on +Z; `facing` rotates the whole model so the screen points that
+ * way (the keyboard stays in front of the monitor).
+ */
+export function computerParts(facing: Facing = "south"): ModelBox[] {
+  const c = textureLayer("computer_case");
+  const s = textureLayer("computer_screen");
+  const k = textureLayer("computer_keyboard");
+  const caseFaces = (
+    front: number
+  ): [number, number, number, number, number, number] => {
+    const f: [number, number, number, number, number, number] = [
+      c,
+      c,
+      c,
+      c,
+      c,
+      c,
+    ];
+    f[front] = s;
+    return f;
+  };
+  const front = FRONT_FACE[facing];
+  const keyboardFaces = caseFaces(front);
+  keyboardFaces[2] = k;
+  const parts: ModelBox[] = [
+    // keyboard (flat slab in front)
+    {
+      box: [3 / 16, 0, 8 / 16, 13 / 16, 1 / 16, 13 / 16],
+      faces: keyboardFaces,
+    },
+    // monitor stand
+    {
+      box: [7 / 16, 0, 5 / 16, 9 / 16, 1 / 16, 7 / 16],
+      faces: caseFaces(front),
+    },
+    {
+      box: [7.5 / 16, 1 / 16, 5.5 / 16, 8.5 / 16, 3 / 16, 6.5 / 16],
+      faces: caseFaces(front),
+    },
+    // monitor body (screen on the front face)
+    {
+      box: [4 / 16, 3 / 16, 5 / 16, 12 / 16, 9 / 16, 6.5 / 16],
+      faces: caseFaces(front),
+    },
+    // tower behind/beside
+    {
+      box: [12 / 16, 0, 3 / 16, 15 / 16, 9 / 16, 6 / 16],
+      faces: caseFaces(front),
+    },
+  ];
+  if (facing === "south") return parts;
+  return parts.map((p) => ({ ...p, box: rotateBox(p.box, facing) }));
+}
+
+/** Block id for a computer facing `facing` (the default south variant reuses Computer) */
+export function computerBlockId(facing: Facing): BlockID {
+  switch (facing) {
+    case "north":
+      return BlockID.ComputerNorth;
+    case "east":
+      return BlockID.ComputerEast;
+    case "west":
+      return BlockID.ComputerWest;
+    default:
+      return BlockID.Computer;
+  }
+}
+
 export enum RenderLayer {
   Opaque,
   Cutout,
@@ -163,6 +277,10 @@ export type BlockDef = {
   /** Toolbar icon data URL, rendered from the block textures at load */
   uiTexture: string;
   sound: SoundGroup;
+  /** Horizontal direction a directional model (the computer) faces */
+  facing?: Facing;
+  /** Hidden from the creative block picker (non-default directional variants) */
+  paletteHidden?: boolean;
 };
 
 type FaceSpec =
@@ -246,6 +364,27 @@ const table = (id: BlockID, name: string): BlockDef =>
     box: [0, TABLE_TOP_Y, 0, 1, 1, 1],
     lightOpacity: 1,
     cullSelf: true,
+  });
+
+/**
+ * Desktop computer: a multi-box prop whose model sits in the lower part of its
+ * cell, so placing it in the cell above a table makes it stand on the tabletop.
+ * The screen glows and the block emits a little light. `facing` picks which way
+ * the screen looks; only the default south variant shows in the block picker.
+ */
+const computer = (id: BlockID, facing: Facing): BlockDef =>
+  cube(id, "computer", "computer_case", "", "stone", {
+    geometry: RenderGeometry.Computer,
+    layer: RenderLayer.Cutout,
+    opaque: false,
+    passable: false,
+    replaceable: false,
+    box: [3 / 16, 0, 3 / 16, 15 / 16, 9 / 16, 15 / 16],
+    lightEmission: 7,
+    lightOpacity: 1,
+    cullSelf: true,
+    facing,
+    paletteHidden: facing !== "south",
   });
 
 const leaves = (
@@ -446,6 +585,10 @@ const defs: BlockDef[] = [
   cube(BlockID.GoldOre, "gold_ore", "gold_ore", "", "stone"),
   cube(BlockID.DiamondOre, "diamond_ore", "diamond_ore", "", "stone"),
   table(BlockID.Table, "table"),
+  computer(BlockID.Computer, "south"),
+  computer(BlockID.ComputerNorth, "north"),
+  computer(BlockID.ComputerEast, "east"),
+  computer(BlockID.ComputerWest, "west"),
 ];
 
 export const BLOCKS: BlockDef[] = [];

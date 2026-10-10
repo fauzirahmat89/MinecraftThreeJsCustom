@@ -3,6 +3,7 @@ import * as THREE from "three";
 import {
   BLOCKS,
   BlockDef,
+  computerParts,
   RenderGeometry,
   tableParts,
   TEXTURE_LAYERS,
@@ -177,6 +178,90 @@ export function renderBlockIcon(
         (a[0] + a[3] + a[2] + a[5]) / 2 - (b[0] + b[3] + b[2] + b[5]) / 2
     );
     for (const [x0, y0, z0, x1, y1, z1] of parts) {
+      // top (+Y)
+      ctx.save();
+      ctx.setTransform(w / s, h / s, -w / s, h / s, cx, top + (1 - y1) * side);
+      ctx.drawImage(
+        topC,
+        x0 * s,
+        z0 * s,
+        (x1 - x0) * s,
+        (z1 - z0) * s,
+        x0 * s,
+        z0 * s,
+        (x1 - x0) * s,
+        (z1 - z0) * s
+      );
+      ctx.restore();
+      // right (+X)
+      ctx.save();
+      ctx.setTransform(
+        -w / s,
+        h / s,
+        0,
+        -side / s,
+        cx + x1 * w,
+        top + x1 * h + side
+      );
+      ctx.drawImage(
+        rightC,
+        z0 * s,
+        y0 * s,
+        (z1 - z0) * s,
+        (y1 - y0) * s,
+        z0 * s,
+        y0 * s,
+        (z1 - z0) * s,
+        (y1 - y0) * s
+      );
+      ctx.restore();
+      // left (+Z)
+      ctx.save();
+      ctx.setTransform(
+        w / s,
+        h / s,
+        0,
+        -side / s,
+        cx - z1 * w,
+        top + z1 * h + side
+      );
+      ctx.drawImage(
+        leftC,
+        x0 * s,
+        y0 * s,
+        (x1 - x0) * s,
+        (y1 - y0) * s,
+        x0 * s,
+        y0 * s,
+        (x1 - x0) * s,
+        (y1 - y0) * s
+      );
+      ctx.restore();
+    }
+    return canvas.toDataURL();
+  }
+
+  // Computer: draw each model box (back to front) as an isometric box, using
+  // that part's own face textures; the screen part is drawn full-bright.
+  if (def.geometry === RenderGeometry.Computer) {
+    const L = ICON_SIZE / (Math.SQRT2 / 2 + Math.cos(Math.PI / 6));
+    const w = L / Math.SQRT2;
+    const h = w / 2;
+    const side = L * Math.cos(Math.PI / 6);
+    const cx = ICON_SIZE / 2;
+    const top = (ICON_SIZE - 2 * h - side) / 2;
+    const s = TEXTURE_SIZE;
+    const parts = computerParts(def.facing ?? "south");
+    parts.sort(
+      (a, b) =>
+        (a.box[0] + a.box[3] + a.box[2] + a.box[5]) / 2 -
+        (b.box[0] + b.box[3] + b.box[2] + b.box[5]) / 2
+    );
+    for (const part of parts) {
+      const [x0, y0, z0, x1, y1, z1] = part.box;
+      const topC = face(part.faces[2], 1);
+      const rightC = face(part.faces[0], part.emissive ? 1 : 0.8);
+      const leftC = face(part.faces[4], part.emissive ? 1 : 0.6);
       // top (+Y)
       ctx.save();
       ctx.setTransform(w / s, h / s, -w / s, h / s, cx, top + (1 - y1) * side);

@@ -1,7 +1,12 @@
 import * as THREE from "three";
 
 import { BlockID } from "../Block";
-import { getBlockDef, RenderGeometry, tableParts } from "../Block/blocks";
+import {
+  computerParts,
+  getBlockDef,
+  RenderGeometry,
+  tableParts,
+} from "../Block/blocks";
 import { BlockTextures } from "../Block/textures";
 import { Physics } from "../Physics";
 import { Player } from "../Player";
@@ -177,12 +182,24 @@ export class HandRenderer {
         1
       );
     } else {
-      const boxes: [number, number, number, number, number, number][] =
+      const parts: {
+        box: [number, number, number, number, number, number];
+        faces: [number, number, number, number, number, number];
+        emissive?: boolean;
+      }[] =
         def.geometry === RenderGeometry.Table
-          ? tableParts({ west: false, east: false, north: false, south: false })
-          : [def.box];
-      for (const [x0, y0, z0, x1, y1, z1] of boxes) {
-        const faces: [number, number, number][][] = [
+          ? tableParts({
+              west: false,
+              east: false,
+              north: false,
+              south: false,
+            }).map((box) => ({ box, faces: def.faces }))
+          : def.geometry === RenderGeometry.Computer
+          ? computerParts(def.facing ?? "south")
+          : [{ box: def.box, faces: def.faces }];
+      for (const { box, faces, emissive } of parts) {
+        const [x0, y0, z0, x1, y1, z1] = box;
+        const quads: [number, number, number][][] = [
           [
             [x1, y1, z0],
             [x1, y1, z1],
@@ -220,8 +237,8 @@ export class HandRenderer {
             [x1, y0, z0],
           ],
         ];
-        faces.forEach((corners, f) =>
-          quad(corners, def.faces[f], FACE_SHADE[f])
+        quads.forEach((corners, f) =>
+          quad(corners, faces[f], emissive ? 1 : FACE_SHADE[f])
         );
       }
     }

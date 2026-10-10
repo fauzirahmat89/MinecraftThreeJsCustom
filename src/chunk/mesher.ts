@@ -1,6 +1,7 @@
 import {
   BlockBox,
   BlockDef,
+  computerParts,
   fluidHeight,
   getBlockDef,
   RenderGeometry,
@@ -303,6 +304,7 @@ export function meshChunk(
   meshCrosses(size, data, vol, builders);
   meshBoxes(size, data, vol, builders);
   meshTables(size, data, vol, builders);
+  meshComputers(size, data, vol, builders);
   meshFluids(size, data, vol, builders);
 
   return {
@@ -783,6 +785,60 @@ function meshTables(
               def.faces[face],
               face,
               def.emissive
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Computers: a multi-box prop (monitor + stand + keyboard + tower). Faces flush
+ * with the cell boundary are culled like cube faces; the monitor screen box is
+ * drawn at full brightness.
+ */
+function meshComputers(
+  size: ChunkSize,
+  data: Uint8Array,
+  vol: LitVolume,
+  builders: Record<RenderLayer, GeometryBuilder>
+) {
+  const w = size.width;
+  const shade = newShade();
+  for (let y = 0; y < size.height; y++) {
+    for (let z = 0; z < w; z++) {
+      for (let x = 0; x < w; x++) {
+        const def = getBlockDef(data[blockIndex(size, x, y, z)]);
+        if (def.geometry !== RenderGeometry.Computer) continue;
+        const builder = builders[def.layer];
+        for (const part of computerParts(def.facing ?? "south")) {
+          const b = part.box;
+          for (let face = 0; face < 6; face++) {
+            const [nx, ny, nz] = FACE_NORMALS[face];
+            const axis = face >> 1;
+            const positive = (face & 1) === 0;
+            const flush = positive ? b[axis + 3] >= 1 : b[axis] <= 0;
+            let lx = x;
+            let ly = y;
+            let lz = z;
+            if (flush) {
+              lx += nx;
+              ly += ny;
+              lz += nz;
+              if (occludes(getBlockDef(vol.get(lx, ly, lz)), def)) continue;
+            }
+            shade.sky.fill(vol.skyLight(lx, ly, lz));
+            shade.block.fill(vol.blockLight(lx, ly, lz));
+            shade.ao.fill(3);
+            const { corners, uvs } = boxFace(face, b, x, y, z);
+            builder.quad(
+              corners,
+              uvs,
+              shade,
+              part.faces[face],
+              face,
+              def.emissive || part.emissive === true
             );
           }
         }

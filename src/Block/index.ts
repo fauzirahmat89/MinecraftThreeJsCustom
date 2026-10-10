@@ -32,6 +32,12 @@ export enum BlockID {
   SnowLayer = 29,
   /** Furniture table (multi-box model, connects to neighbouring tables) */
   Table = 30,
+  /** Desktop computer prop, sits on top of a table (faces south/+Z) */
+  Computer = 31,
+  /** Computer variants facing the other horizontal directions */
+  ComputerNorth = 32,
+  ComputerEast = 33,
+  ComputerWest = 34,
   /**
    * Flowing liquids occupy 16 ids each: FlowingWater + (level - 1) for
    * levels 1-7 (thinner as the level rises), + FLUID_FALLING for columns
@@ -91,4 +97,8 @@ export const blockIdToKey = {
   [BlockID.DiamondOre]: "diamond_ore",
   [BlockID.SnowLayer]: "snow_layer",
   [BlockID.Table]: "table",
+  [BlockID.Computer]: "computer",
+  [BlockID.ComputerNorth]: "computer_north",
+  [BlockID.ComputerEast]: "computer_east",
+  [BlockID.ComputerWest]: "computer_west",
 };
