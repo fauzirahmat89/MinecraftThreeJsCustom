@@ -5,6 +5,7 @@ import {
   getBlockDef,
   RenderGeometry,
   RenderLayer,
+  tableParts,
 } from "../Block/blocks";
 
 import {
@@ -301,6 +302,7 @@ export function meshChunk(
   meshCubes(size, vol, builders);
   meshCrosses(size, data, vol, builders);
   meshBoxes(size, data, vol, builders);
+  meshTables(size, data, vol, builders);
   meshFluids(size, data, vol, builders);
 
   return {
@@ -722,6 +724,67 @@ function meshBoxes(
             face,
             def.emissive
           );
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Tables: a tabletop plus corner legs, with the shape derived from which
+ * horizontal neighbours are also tables, so a run of tables forms one long
+ * surface. Faces flush with the cell boundary are culled like cube faces.
+ */
+function meshTables(
+  size: ChunkSize,
+  data: Uint8Array,
+  vol: LitVolume,
+  builders: Record<RenderLayer, GeometryBuilder>
+) {
+  const w = size.width;
+  const shade = newShade();
+  for (let y = 0; y < size.height; y++) {
+    for (let z = 0; z < w; z++) {
+      for (let x = 0; x < w; x++) {
+        const def = getBlockDef(data[blockIndex(size, x, y, z)]);
+        if (def.geometry !== RenderGeometry.Table) continue;
+        const isTable = (bx: number, bz: number) =>
+          vol.get(bx, y, bz) === def.id;
+        const parts = tableParts({
+          west: isTable(x - 1, z),
+          east: isTable(x + 1, z),
+          north: isTable(x, z - 1),
+          south: isTable(x, z + 1),
+        });
+        const builder = builders[def.layer];
+        for (const b of parts) {
+          for (let face = 0; face < 6; face++) {
+            const [nx, ny, nz] = FACE_NORMALS[face];
+            const axis = face >> 1;
+            const positive = (face & 1) === 0;
+            const flush = positive ? b[axis + 3] >= 1 : b[axis] <= 0;
+            let lx = x;
+            let ly = y;
+            let lz = z;
+            if (flush) {
+              lx += nx;
+              ly += ny;
+              lz += nz;
+              if (occludes(getBlockDef(vol.get(lx, ly, lz)), def)) continue;
+            }
+            shade.sky.fill(vol.skyLight(lx, ly, lz));
+            shade.block.fill(vol.blockLight(lx, ly, lz));
+            shade.ao.fill(3);
+            const { corners, uvs } = boxFace(face, b, x, y, z);
+            builder.quad(
+              corners,
+              uvs,
+              shade,
+              def.faces[face],
+              face,
+              def.emissive
+            );
+          }
         }
       }
     }

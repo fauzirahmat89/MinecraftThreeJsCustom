@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { BlockID } from "../Block";
-import { getBlockDef, RenderGeometry } from "../Block/blocks";
+import { getBlockDef, RenderGeometry, tableParts } from "../Block/blocks";
 import { BlockTextures } from "../Block/textures";
 import { Physics } from "../Physics";
 import { Player } from "../Player";
@@ -177,46 +177,53 @@ export class HandRenderer {
         1
       );
     } else {
-      const [x0, y0, z0, x1, y1, z1] = def.box;
-      const faces: [number, number, number][][] = [
-        [
-          [x1, y1, z0],
-          [x1, y1, z1],
-          [x1, y0, z1],
-          [x1, y0, z0],
-        ],
-        [
-          [x0, y1, z1],
-          [x0, y1, z0],
-          [x0, y0, z0],
-          [x0, y0, z1],
-        ],
-        [
-          [x0, y1, z0],
-          [x1, y1, z0],
-          [x1, y1, z1],
-          [x0, y1, z1],
-        ],
-        [
-          [x0, y0, z1],
-          [x1, y0, z1],
-          [x1, y0, z0],
-          [x0, y0, z0],
-        ],
-        [
-          [x0, y1, z1],
-          [x1, y1, z1],
-          [x1, y0, z1],
-          [x0, y0, z1],
-        ],
-        [
-          [x1, y1, z0],
-          [x0, y1, z0],
-          [x0, y0, z0],
-          [x1, y0, z0],
-        ],
-      ];
-      faces.forEach((corners, f) => quad(corners, def.faces[f], FACE_SHADE[f]));
+      const boxes: [number, number, number, number, number, number][] =
+        def.geometry === RenderGeometry.Table
+          ? tableParts({ west: false, east: false, north: false, south: false })
+          : [def.box];
+      for (const [x0, y0, z0, x1, y1, z1] of boxes) {
+        const faces: [number, number, number][][] = [
+          [
+            [x1, y1, z0],
+            [x1, y1, z1],
+            [x1, y0, z1],
+            [x1, y0, z0],
+          ],
+          [
+            [x0, y1, z1],
+            [x0, y1, z0],
+            [x0, y0, z0],
+            [x0, y0, z1],
+          ],
+          [
+            [x0, y1, z0],
+            [x1, y1, z0],
+            [x1, y1, z1],
+            [x0, y1, z1],
+          ],
+          [
+            [x0, y0, z1],
+            [x1, y0, z1],
+            [x1, y0, z0],
+            [x0, y0, z0],
+          ],
+          [
+            [x0, y1, z1],
+            [x1, y1, z1],
+            [x1, y0, z1],
+            [x0, y0, z1],
+          ],
+          [
+            [x1, y1, z0],
+            [x0, y1, z0],
+            [x0, y0, z0],
+            [x1, y0, z0],
+          ],
+        ];
+        faces.forEach((corners, f) =>
+          quad(corners, def.faces[f], FACE_SHADE[f])
+        );
+      }
     }
 
     const geometry = new THREE.BufferGeometry();

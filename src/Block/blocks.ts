@@ -39,6 +39,7 @@ export const TEXTURE_LAYERS = [
   "dead_bush",
   "gold_ore",
   "diamond_ore",
+  "oak_planks",
 ] as const;
 
 export type TextureName = typeof TEXTURE_LAYERS[number];
@@ -54,6 +55,11 @@ export enum RenderGeometry {
   Fluid,
   /** Axis-aligned box smaller than the cell (snow layer, cactus) */
   Box,
+  /**
+   * Furniture model (table): a tabletop plus corner legs, merged with
+   * neighbouring blocks of the same type (fence-style connection).
+   */
+  Table,
 }
 
 /** Block-space AABB: minX, minY, minZ, maxX, maxY, maxZ */
@@ -62,6 +68,50 @@ export type BlockBox = [number, number, number, number, number, number];
 export const FULL_BOX: BlockBox = [0, 0, 0, 1, 1, 1];
 
 export const SNOW_LAYER_HEIGHT = 2 / 16;
+
+/** Table model metrics (in block units) */
+export const TABLE_TOP_Y = 13 / 16;
+export const TABLE_INSET = 2 / 16;
+export const TABLE_LEG = 3 / 16;
+
+/** Which horizontal neighbours are the same table block */
+export type TableConnections = {
+  west: boolean;
+  east: boolean;
+  north: boolean;
+  south: boolean;
+};
+
+/**
+ * Render boxes of a table given its connections. A side that connects extends
+ * the tabletop to the cell edge and suppresses the legs on that corner, so a
+ * lone table is a small 4-legged table and a run of them forms one long
+ * tabletop with legs only under the outer corners.
+ */
+export function tableParts(c: TableConnections): BlockBox[] {
+  const x0 = c.west ? 0 : TABLE_INSET;
+  const x1 = c.east ? 1 : 1 - TABLE_INSET;
+  const z0 = c.north ? 0 : TABLE_INSET;
+  const z1 = c.south ? 1 : 1 - TABLE_INSET;
+  const parts: BlockBox[] = [[x0, TABLE_TOP_Y, z0, x1, 1, z1]];
+  const legX = (west: boolean): [number, number] =>
+    west
+      ? [TABLE_INSET, TABLE_INSET + TABLE_LEG]
+      : [1 - TABLE_INSET - TABLE_LEG, 1 - TABLE_INSET];
+  const legZ = (north: boolean): [number, number] =>
+    north
+      ? [TABLE_INSET, TABLE_INSET + TABLE_LEG]
+      : [1 - TABLE_INSET - TABLE_LEG, 1 - TABLE_INSET];
+  for (const west of [true, false]) {
+    for (const north of [true, false]) {
+      if (c[west ? "west" : "east"] || c[north ? "north" : "south"]) continue;
+      const [lx0, lx1] = legX(west);
+      const [lz0, lz1] = legZ(north);
+      parts.push([lx0, 0, lz0, lx1, TABLE_TOP_Y, lz1]);
+    }
+  }
+  return parts;
+}
 
 export enum RenderLayer {
   Opaque,
@@ -179,6 +229,23 @@ const box = (
     lightOpacity: 0,
     cullSelf: false,
     ...overrides,
+  });
+
+/**
+ * Furniture table: a multi-box model (tabletop + legs) that connects to
+ * neighbouring tables of the same type. Collision, raycast and the selection
+ * outline use the cell-filling tabletop slab, so the player can stand on it.
+ */
+const table = (id: BlockID, name: string): BlockDef =>
+  cube(id, name, "oak_planks", "", "wood", {
+    geometry: RenderGeometry.Table,
+    layer: RenderLayer.Cutout,
+    opaque: false,
+    passable: false,
+    replaceable: false,
+    box: [0, TABLE_TOP_Y, 0, 1, 1, 1],
+    lightOpacity: 1,
+    cullSelf: true,
   });
 
 const leaves = (
@@ -378,6 +445,7 @@ const defs: BlockDef[] = [
   cross(BlockID.DeadBush, "dead_bush", "dead_bush", ""),
   cube(BlockID.GoldOre, "gold_ore", "gold_ore", "", "stone"),
   cube(BlockID.DiamondOre, "diamond_ore", "diamond_ore", "", "stone"),
+  table(BlockID.Table, "table"),
 ];
 
 export const BLOCKS: BlockDef[] = [];

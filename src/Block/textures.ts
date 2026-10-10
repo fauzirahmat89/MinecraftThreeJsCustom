@@ -4,6 +4,7 @@ import {
   BLOCKS,
   BlockDef,
   RenderGeometry,
+  tableParts,
   TEXTURE_LAYERS,
   TextureName,
 } from "./blocks";
@@ -149,6 +150,93 @@ export function renderBlockIcon(
 
   if (def.geometry === RenderGeometry.Cross) {
     ctx.drawImage(face(def.faces[0], 1), 4, 4, ICON_SIZE - 8, ICON_SIZE - 8);
+    return canvas.toDataURL();
+  }
+
+  // Table: draw each model box (legs then tabletop) as an isometric box so the
+  // icon matches the in-world shape rather than a full cube.
+  if (def.geometry === RenderGeometry.Table) {
+    const L = ICON_SIZE / (Math.SQRT2 / 2 + Math.cos(Math.PI / 6));
+    const w = L / Math.SQRT2;
+    const h = w / 2;
+    const side = L * Math.cos(Math.PI / 6);
+    const cx = ICON_SIZE / 2;
+    const top = (ICON_SIZE - 2 * h - side) / 2;
+    const s = TEXTURE_SIZE;
+    const topC = face(def.faces[2], 1);
+    const rightC = face(def.faces[0], 0.8);
+    const leftC = face(def.faces[4], 0.6);
+    const parts = tableParts({
+      west: false,
+      east: false,
+      north: false,
+      south: false,
+    });
+    parts.sort(
+      (a, b) =>
+        (a[0] + a[3] + a[2] + a[5]) / 2 - (b[0] + b[3] + b[2] + b[5]) / 2
+    );
+    for (const [x0, y0, z0, x1, y1, z1] of parts) {
+      // top (+Y)
+      ctx.save();
+      ctx.setTransform(w / s, h / s, -w / s, h / s, cx, top + (1 - y1) * side);
+      ctx.drawImage(
+        topC,
+        x0 * s,
+        z0 * s,
+        (x1 - x0) * s,
+        (z1 - z0) * s,
+        x0 * s,
+        z0 * s,
+        (x1 - x0) * s,
+        (z1 - z0) * s
+      );
+      ctx.restore();
+      // right (+X)
+      ctx.save();
+      ctx.setTransform(
+        -w / s,
+        h / s,
+        0,
+        -side / s,
+        cx + x1 * w,
+        top + x1 * h + side
+      );
+      ctx.drawImage(
+        rightC,
+        z0 * s,
+        y0 * s,
+        (z1 - z0) * s,
+        (y1 - y0) * s,
+        z0 * s,
+        y0 * s,
+        (z1 - z0) * s,
+        (y1 - y0) * s
+      );
+      ctx.restore();
+      // left (+Z)
+      ctx.save();
+      ctx.setTransform(
+        w / s,
+        h / s,
+        0,
+        -side / s,
+        cx - z1 * w,
+        top + z1 * h + side
+      );
+      ctx.drawImage(
+        leftC,
+        x0 * s,
+        y0 * s,
+        (x1 - x0) * s,
+        (y1 - y0) * s,
+        x0 * s,
+        y0 * s,
+        (x1 - x0) * s,
+        (y1 - y0) * s
+      );
+      ctx.restore();
+    }
     return canvas.toDataURL();
   }
 

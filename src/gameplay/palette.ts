@@ -11,4 +11,5 @@ export const CREATIVE_PALETTE: BlockID[] = [
   BlockID.Leaves,
   BlockID.Sand,
   BlockID.Water,
+  BlockID.Table,
 ];

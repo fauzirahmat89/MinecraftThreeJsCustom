@@ -30,6 +30,8 @@ export enum BlockID {
   DiamondOre = 28,
   /** Thin snow cover (1/8 block) that sits on top of the ground */
   SnowLayer = 29,
+  /** Furniture table (multi-box model, connects to neighbouring tables) */
+  Table = 30,
   /**
    * Flowing liquids occupy 16 ids each: FlowingWater + (level - 1) for
    * levels 1-7 (thinner as the level rises), + FLUID_FALLING for columns
@@ -88,4 +90,5 @@ export const blockIdToKey = {
   [BlockID.GoldOre]: "gold_ore",
   [BlockID.DiamondOre]: "diamond_ore",
   [BlockID.SnowLayer]: "snow_layer",
+  [BlockID.Table]: "table",
 };
